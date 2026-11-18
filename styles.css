@@ -1061,3 +1061,109 @@ input[type="range"]::-moz-range-thumb:hover {
   height: 105px;
   border-radius: 5px;
 }
+
+/* Hide Edge/IE built-in password eye icon so it doesn't double up with our custom SVG toggle */
+#adminPwdInput::-ms-reveal,
+#adminPwdInput::-ms-clear {
+  display: none;
+}
+
+/* ==========================================================================
+   MOBILE & TABLET RESPONSIVE LAYOUT (phone preview friendly)
+   ========================================================================== */
+@media (max-width: 860px) {
+  body {
+    flex-direction: column;
+    height: auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  #viewport {
+    order: -1;
+    flex: none;
+    width: 100%;
+    height: 48vh;
+    min-height: 300px;
+    max-height: 420px;
+    border-bottom: 1px solid rgba(72, 124, 109, 0.18);
+  }
+
+  #canvas3d,
+  #canvas2d,
+  #canvas3d canvas {
+    touch-action: none;
+  }
+
+  #sidebar {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    border-left: none;
+    overflow-y: visible;
+    padding: 12px 14px 28px 14px;
+  }
+
+  /* Compact top controls inside viewport so 2D/3D switch and Wheel don't collide */
+  .viewport-top-left {
+    top: 10px;
+    left: 10px;
+  }
+
+  .view-pill button {
+    padding: 0 10px;
+    font-size: 0.75rem;
+  }
+
+  .viewport-wheel-widget {
+    top: 10px;
+    right: 10px;
+    padding: 4px 10px 4px 6px;
+    gap: 7px;
+  }
+
+  .wheel-container {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+  }
+
+  .wheel-badge-text {
+    font-size: 0.74rem;
+  }
+
+  .wheel-sub {
+    display: none;
+  }
+
+  .viewport-bottom-right {
+    bottom: 10px;
+    right: 10px;
+  }
+
+  /* Prevent horizontal clipping on narrow 360px phone screens */
+  .reversal-grid {
+    grid-template-columns: repeat(8, 1fr);
+  }
+
+  .seg-svg-icon {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+  }
+
+  .btn-row {
+    flex-wrap: wrap;
+  }
+
+  .btn-row > button {
+    flex: 1 1 auto;
+  }
+
+  .modal-window {
+    width: 95%;
+    max-height: 90vh;
+    padding: 14px;
+  }
+}
