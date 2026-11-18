@@ -815,13 +815,16 @@ function render2D(targetCanvas = canvas2d, customSpiro = spiro, customPalette = 
   const bounds = customSpiro.getBoundingRect();
 
   // Keep ornament at 58% of the smaller viewport dimension on main canvas
+  const isMobile = window.innerWidth <= 860;
+
+  // Keep ornament at 58% on desktop, 72% on compact mobile viewport
   const maxSpan = targetCanvas === canvas2d
-    ? Math.min(w, h) * 0.58
+    ? Math.min(w, h) * (isMobile ? 0.72 : 0.58)
     : Math.min(w, h) - 24;
 
   const scale = maxSpan / Math.max(bounds.width, bounds.height, 1e-4);
   const paddingLeft = (w - scale * bounds.width) / 2;
-  const paddingTop = (h - scale * bounds.height) / 2 + (targetCanvas === canvas2d ? 8 : 0);
+  const paddingTop = (h - scale * bounds.height) / 2 + (targetCanvas === canvas2d ? (isMobile ? 20 : 8) : 0);
 
   ctx.translate(paddingLeft, paddingTop);
 
@@ -1157,6 +1160,14 @@ function render3D() {
   renderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+
+  // On mobile screens, shift 3D model down below top UI buttons and zoom in slightly
+  const isMobile = window.innerWidth <= 860;
+  ornamentGroup.position.y = isMobile ? -7.5 : 0;
+  if (!view3DState.isDragging) {
+    view3DState.targetCamDistance = isMobile ? 140 : 175;
+    view3DState.camDistance = view3DState.targetCamDistance;
+  }
 
   while (ornamentGroup.children.length > 0) {
     const child = ornamentGroup.children[0];
