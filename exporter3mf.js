@@ -349,18 +349,19 @@ function buildOrnamentLayers(spiro, options) {
   let fillGeo = null;
   let lineGeo = null;
 
+  // Extrude layers to 1.80 mm total height (0.60 mm = 3x 0.20 mm per color)
   if (colorMode === 3) {
-    baseGeo = extrudePolyTreeManifold(baseFinalTree, 0.00, 0.40);
-    fillGeo = isClosed ? extrudePolyTreeManifold(fillPolyTree, 0.40, 0.80) : null;
-    lineGeo = extrudePolyTreeManifold(linePolyTree, 0.80, 1.20);
+    baseGeo = extrudePolyTreeManifold(baseFinalTree, 0.00, 0.60);
+    fillGeo = isClosed ? extrudePolyTreeManifold(fillPolyTree, 0.60, 1.20) : null;
+    lineGeo = extrudePolyTreeManifold(linePolyTree, 1.20, 1.80);
   } else if (colorMode === 2) {
     baseGeo = null;
-    fillGeo = isClosed ? extrudePolyTreeManifold(fillPolyTree, 0.00, 0.80) : null;
-    lineGeo = extrudePolyTreeManifold(linePolyTree, 0.80, 1.20);
+    fillGeo = isClosed ? extrudePolyTreeManifold(fillPolyTree, 0.00, 1.20) : null;
+    lineGeo = extrudePolyTreeManifold(linePolyTree, 1.20, 1.80);
   } else {
     baseGeo = null;
     fillGeo = null;
-    lineGeo = extrudePolyTreeManifold(linePolyTree, 0.00, 1.20);
+    lineGeo = extrudePolyTreeManifold(linePolyTree, 0.00, 1.80);
   }
 
   return { baseGeo, fillGeo, lineGeo };

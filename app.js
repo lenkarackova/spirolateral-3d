@@ -891,7 +891,7 @@ function render2D(targetCanvas = canvas2d, customSpiro = spiro, customPalette = 
     }
   }
 
-  const modelScaleMm = (Math.max(bounds.width, bounds.height) * scale) / 70;
+  const modelScaleMm = (Math.max(bounds.width, bounds.height) * scale) / 74;
   const loopScreenX = topX * scale;
   const loopScreenY = topY * scale - 1.2 * modelScaleMm;
   const loopR = 2.0 * modelScaleMm;
@@ -1108,7 +1108,7 @@ function init3D() {
   leftKeyLight.shadow.mapSize.height = 1024;
   leftKeyLight.shadow.camera.near = 50;
   leftKeyLight.shadow.camera.far = 220;
-  const d = 42;
+  const d = 45;
   leftKeyLight.shadow.camera.left = -d;
   leftKeyLight.shadow.camera.right = d;
   leftKeyLight.shadow.camera.top = d;
@@ -1244,14 +1244,14 @@ function render3D() {
 
   const pal = getActivePalette();
   const { baseGeo, fillGeo, lineGeo } = buildOrnamentLayers(spiro, {
-    targetSizeMm: 70,
+    targetSizeMm: 74,
     lineWidthMm: state.lineWidthMm,
     colorMode: state.colorMode,
     addLoop: state.addLoop
   });
 
   function addLayerMesh(geo, color, isSilk) {
-    geo.translate(0, 0, -0.6);
+    geo.translate(0, 0, -0.9);
     const mat = createFilamentMaterial(color, isSilk);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
@@ -1330,7 +1330,7 @@ document.getElementById('btnDownload3MF').onclick = async () => {
   try {
     const student = state.studentName || 'Model';
     const geometries = buildOrnamentLayers(spiro, {
-      targetSizeMm: 70,
+      targetSizeMm: 74,
       lineWidthMm: state.lineWidthMm,
       colorMode: state.colorMode,
       addLoop: state.addLoop
@@ -1624,7 +1624,7 @@ document.getElementById('btnBatchExport3MF').onclick = async () => {
       s.setMirrorSymmetry(Boolean(item.params.mirrorSymmetry));
 
       const geometries = buildOrnamentLayers(s, {
-        targetSizeMm: 70,
+        targetSizeMm: 74,
         lineWidthMm: item.params.lineWidthMm || 0.80,
         colorMode: item.colorMode || 3,
         addLoop: item.params.addLoop !== false
