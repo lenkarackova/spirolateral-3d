@@ -685,22 +685,44 @@ function bindSliderAndSpinbox(slider, spinbox, isInteger, onChange) {
     onChange(val);
   };
 
-  slider.oninput = (e) => {
-    const val = parseFloat(e.target.value);
+  const scheduleUpdate = (val) => {
     spinbox.value = isInteger ? val : val.toFixed(1);
     updateSliderFill(slider);
 
-    // Debounce heavy 3D Clipper rebuilds while actively dragging the slider
+    // Debounce heavy 3D Clipper rebuilds while dragging or scrolling rapidly
     pending = true;
     clearTimeout(debounceTimer);
     const delay = state.viewMode === '3D' ? 140 : 30;
     debounceTimer = setTimeout(() => commit(val), delay);
   };
 
+  slider.oninput = (e) => {
+    scheduleUpdate(parseFloat(e.target.value));
+  };
+
   // Flush immediately when the user releases the slider handle
   slider.onchange = (e) => {
     commit(parseFloat(e.target.value));
   };
+
+  // Support mouse wheel scrolling directly over the slider
+  slider.addEventListener('wheel', (e) => {
+    if (e.deltaY === 0) return;
+    e.preventDefault();
+
+    const min = parseFloat(slider.min);
+    const max = parseFloat(slider.max);
+    const step = parseFloat(slider.step) || 1;
+    const current = parseFloat(slider.value);
+    const dir = e.deltaY < 0 ? 1 : -1;
+
+    let next = Math.max(min, Math.min(max, current + dir * step));
+    next = isInteger ? Math.round(next) : parseFloat(next.toFixed(1));
+    if (next === current) return;
+
+    slider.value = isInteger ? next : next.toFixed(1);
+    scheduleUpdate(next);
+  }, { passive: false });
 
   spinbox.onchange = (e) => {
     let val = parseFloat(e.target.value);
