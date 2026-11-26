@@ -6,7 +6,7 @@ class Spirolateral {
     this.segmentLength = 10;
     this.initX = 0;
     this.initY = 0;
-    this.maxCycles = 1000;
+    this.maxCycles = 500;
     this.maxUnclosedCycles = 7;
 
     this.segmentNr = segmentNr;
@@ -114,6 +114,8 @@ class Spirolateral {
 
         this.rawPolygon.push({ x, y });
       }
+
+      if (this.rawPolygon.length > 1800) break;
 
       const roundedX = Math.floor(100 * x + 0.5) / 100;
       const roundedY = Math.floor(100 * y + 0.5) / 100;

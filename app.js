@@ -264,7 +264,7 @@ function spinWheelOfFortune() {
     renderReversalChips();
     updateVisualization();
     state.isSpinning = false;
-  }, 1350);
+  }, 550);
 }
 
 wheelWidget.onclick = spinWheelOfFortune;
@@ -674,11 +674,32 @@ function syncInputsToState() {
 }
 
 function bindSliderAndSpinbox(slider, spinbox, isInteger, onChange) {
+  let debounceTimer = null;
+  let pending = false;
+
+  const commit = (val) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+    if (!pending) return;
+    pending = false;
+    onChange(val);
+  };
+
   slider.oninput = (e) => {
     const val = parseFloat(e.target.value);
     spinbox.value = isInteger ? val : val.toFixed(1);
     updateSliderFill(slider);
-    onChange(val);
+
+    // Debounce heavy 3D Clipper rebuilds while actively dragging the slider
+    pending = true;
+    clearTimeout(debounceTimer);
+    const delay = state.viewMode === '3D' ? 140 : 30;
+    debounceTimer = setTimeout(() => commit(val), delay);
+  };
+
+  // Flush immediately when the user releases the slider handle
+  slider.onchange = (e) => {
+    commit(parseFloat(e.target.value));
   };
 
   spinbox.onchange = (e) => {
@@ -687,6 +708,8 @@ function bindSliderAndSpinbox(slider, spinbox, isInteger, onChange) {
     slider.value = val;
     spinbox.value = isInteger ? val : val.toFixed(1);
     updateSliderFill(slider);
+    clearTimeout(debounceTimer);
+    pending = false;
     onChange(val);
   };
 }
@@ -1290,6 +1313,12 @@ window.addEventListener('resize', () => {
   }
 });
 
+function getExportFileName(ext) {
+  const revPart = state.reverseTurns.length > 0 ? `_${state.reverseTurns.join('-')}` : '';
+  const symPart = state.mirrorSymmetry ? '_sym' : '';
+  return `Spirolateral_${state.segmentNr}_${state.angle}${revPart}${symPart}.${ext}`;
+}
+
 // Download .3MF
 document.getElementById('btnDownload3MF').onclick = async () => {
   const btn = document.getElementById('btnDownload3MF');
@@ -1311,7 +1340,7 @@ document.getElementById('btnDownload3MF').onclick = async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Spirolateral_${student}_${state.segmentNr}_${state.angle}.3mf`;
+    a.download = getExportFileName('3mf');
     a.click();
     URL.revokeObjectURL(url);
   } finally {
@@ -1364,7 +1393,7 @@ document.getElementById('btnDownloadSVG').onclick = () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `Spirolateral_${state.segmentNr}_${state.angle}${state.mirrorSymmetry ? '_sym' : ''}.svg`;
+  a.download = getExportFileName('svg');
   a.click();
   URL.revokeObjectURL(url);
 };
