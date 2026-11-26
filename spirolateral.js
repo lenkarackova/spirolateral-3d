@@ -1,5 +1,5 @@
 /**
- * Spirolateral Model Generator with Chaikin Corner Rounding and Segment Bulging (Curvature)
+ * Spirolateral Model Generator with Chaikin Corner Rounding, Segment Bulging, and Mirror Symmetry
  */
 class Spirolateral {
   constructor(segmentNr = 6, angle = 98) {
@@ -15,16 +15,22 @@ class Spirolateral {
     this.closed = false;
     this.rawPolygon = [];
     this.polygon = [];
+    this.polygons = [];
     this.reverseTurns = [];
 
     this.cornerRounding = 0.0;
     this.segmentCurving = 0.0;
+    this.mirrorSymmetry = false;
 
     this.generate();
   }
 
   getPolygon() {
     return this.polygon;
+  }
+
+  getPolygons() {
+    return this.polygons;
   }
 
   isClosed() {
@@ -65,6 +71,11 @@ class Spirolateral {
   setRoundingAndCurving(rounding, curving) {
     this.cornerRounding = Math.max(0.0, Math.min(1.0, rounding));
     this.segmentCurving = Math.max(-1.0, Math.min(1.0, curving));
+    this.applyCurvature();
+  }
+
+  setMirrorSymmetry(enabled) {
+    this.mirrorSymmetry = Boolean(enabled);
     this.applyCurvature();
   }
 
@@ -188,20 +199,81 @@ class Spirolateral {
       pts = ring;
     }
 
-    this.polygon = pts;
+    if (this.mirrorSymmetry && pts.length > 1) {
+      // Find true rotational center (centroid of unique vertices for closed shapes)
+      let cx = 0;
+      let cy = 0;
+      if (this.closed && pts.length > 2) {
+        const nUnique = pts.length - 1;
+        for (let i = 0; i < nUnique; i++) {
+          cx += pts[i].x;
+          cy += pts[i].y;
+        }
+        cx /= nUnique;
+        cy /= nUnique;
+      } else {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of pts) {
+          if (p.x < minX) minX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y > maxY) maxY = p.y;
+        }
+        cx = (minX + maxX) / 2;
+        cy = (minY + maxY) / 2;
+      }
+
+      // Align the farthest vertex straight up (-Y) so tips meet on the mirror axis
+      let maxR2 = -1;
+      let tipAngle = -Math.PI / 2;
+      for (const p of pts) {
+        const dx = p.x - cx;
+        const dy = p.y - cy;
+        const r2 = dx * dx + dy * dy;
+        if (r2 > maxR2) {
+          maxR2 = r2;
+          tipAngle = Math.atan2(dy, dx);
+        }
+      }
+
+      const rot = -Math.PI / 2 - tipAngle;
+      const cosR = Math.cos(rot);
+      const sinR = Math.sin(rot);
+
+      const aligned = pts.map(p => {
+        const dx = p.x - cx;
+        const dy = p.y - cy;
+        return {
+          x: dx * cosR - dy * sinR,
+          y: dx * sinR + dy * cosR
+        };
+      });
+
+      // Mirror across X=0 and reverse point order to preserve winding orientation
+      const mirrored = aligned.map(p => ({ x: -p.x, y: p.y })).reverse();
+
+      this.polygons = [aligned, mirrored];
+      this.polygon = aligned;
+    } else {
+      this.polygons = [pts];
+      this.polygon = pts;
+    }
+
     this.normalize();
   }
 
   getBoundingRect() {
-    if (this.polygon.length === 0) {
+    if (this.polygons.length === 0 || this.polygons[0].length === 0) {
       return { x: 0, y: 0, width: 1, height: 1 };
     }
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const pt of this.polygon) {
-      if (pt.x < minX) minX = pt.x;
-      if (pt.y < minY) minY = pt.y;
-      if (pt.x > maxX) maxX = pt.x;
-      if (pt.y > maxY) maxY = pt.y;
+    for (const poly of this.polygons) {
+      for (const pt of poly) {
+        if (pt.x < minX) minX = pt.x;
+        if (pt.y < minY) minY = pt.y;
+        if (pt.x > maxX) maxX = pt.x;
+        if (pt.y > maxY) maxY = pt.y;
+      }
     }
     return {
       x: minX,
@@ -213,9 +285,11 @@ class Spirolateral {
 
   normalize() {
     const rect = this.getBoundingRect();
-    for (const pt of this.polygon) {
-      pt.x -= rect.x;
-      pt.y -= rect.y;
+    for (const poly of this.polygons) {
+      for (const pt of poly) {
+        pt.x -= rect.x;
+        pt.y -= rect.y;
+      }
     }
   }
 }

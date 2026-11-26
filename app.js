@@ -91,6 +91,8 @@ const state = {
   cornerRounding: 0.0,
   segmentCurving: 0.0,
   addLoop: true,
+  addLoop: true,
+  mirrorSymmetry: false,
   colorMode: 3,
   selectedPaletteIndex: 0,
   lineWidthMm: 0.80,
@@ -128,6 +130,7 @@ const numLineWidth = document.getElementById('numLineWidth');
 
 const reversalGrid = document.getElementById('reversalGrid');
 const chkAddLoop = document.getElementById('chkAddLoop');
+const chkMirrorSymmetry = document.getElementById('chkMirrorSymmetry');
 const paletteList = document.getElementById('paletteList');
 const statusBadge = document.getElementById('statusBadge');
 
@@ -662,6 +665,7 @@ function syncInputsToState() {
   numLineWidth.value = state.lineWidthMm.toFixed(1);
 
   chkAddLoop.checked = state.addLoop;
+  if (chkMirrorSymmetry) chkMirrorSymmetry.checked = state.mirrorSymmetry;
   studentSelect.value = state.studentName;
   updateUserBadge();
 
@@ -731,6 +735,14 @@ chkAddLoop.onchange = (e) => {
   state.addLoop = e.target.checked;
   updateVisualization();
 };
+
+if (chkMirrorSymmetry) {
+  chkMirrorSymmetry.onchange = (e) => {
+    state.mirrorSymmetry = e.target.checked;
+    spiro.setMirrorSymmetry(state.mirrorSymmetry);
+    updateVisualization();
+  };
+}
 
 const ADMIN_PASS_SHA256 = '42d92f7b1f09096d3540a1d880a291502f2278e8279129f158972b750a695354';
 
@@ -812,9 +824,11 @@ function render2D(targetCanvas = canvas2d, customSpiro = spiro, customPalette = 
   }
 
   const poly = customSpiro.getPolygon();
+  const polys = (typeof customSpiro.getPolygons === 'function')
+    ? customSpiro.getPolygons()
+    : [customSpiro.getPolygon()];
   const bounds = customSpiro.getBoundingRect();
 
-  // Keep ornament at 58% of the smaller viewport dimension on main canvas
   const isMobile = window.innerWidth <= 860;
 
   // Keep ornament at 58% on desktop, 72% on compact mobile viewport
@@ -828,7 +842,7 @@ function render2D(targetCanvas = canvas2d, customSpiro = spiro, customPalette = 
 
   ctx.translate(paddingLeft, paddingTop);
 
-  function tracePolygonPath() {
+  function traceSinglePolygon(poly) {
     poly.forEach((pt, idx) => {
       const sx = pt.x * scale;
       const sy = pt.y * scale;
@@ -838,13 +852,21 @@ function render2D(targetCanvas = canvas2d, customSpiro = spiro, customPalette = 
     if (customSpiro.isClosed()) ctx.closePath();
   }
 
-  let topX = 0, topY = Infinity;
-  poly.forEach(pt => {
-    if (pt.y < topY) {
-      topY = pt.y;
-      topX = pt.x;
+  function traceAllPolygons() {
+    for (const poly of polys) {
+      traceSinglePolygon(poly);
     }
-  });
+  }
+
+  let topX = 0, topY = Infinity;
+  for (const poly of polys) {
+    for (const pt of poly) {
+      if (pt.y < topY) {
+        topY = pt.y;
+        topX = pt.x;
+      }
+    }
+  }
 
   const modelScaleMm = (Math.max(bounds.width, bounds.height) * scale) / 70;
   const loopScreenX = topX * scale;
@@ -882,22 +904,37 @@ function render2D(targetCanvas = canvas2d, customSpiro = spiro, customPalette = 
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = pass.offsetY;
 
-      // Cast shadow from the outer stroke boundary (plus interior if closed in 2/3 color mode)
       ctx.strokeStyle = 'rgba(0,0,0,1)';
       ctx.fillStyle = 'rgba(0,0,0,1)';
       ctx.lineWidth = strokePx;
       ctx.lineJoin = 'miter';
       ctx.miterLimit = 25;
 
-      if (customMode >= 2 && customSpiro.isClosed()) {
+      if (customMode === 3 && customSpiro.isClosed()) {
+        // Fill each polygon silhouette individually to avoid winding cancellation
+        for (const poly of polys) {
+          ctx.beginPath();
+          traceSinglePolygon(poly);
+          ctx.fill('nonzero');
+        }
+        if (state.addLoop) {
+          ctx.beginPath();
+          traceLoopPath();
+          ctx.fill('nonzero');
+        }
+      } else if (customMode === 2 && customSpiro.isClosed()) {
         ctx.beginPath();
-        tracePolygonPath();
-        if (state.addLoop) traceLoopPath();
-        ctx.fill(customMode === 3 ? 'nonzero' : 'evenodd');
+        traceAllPolygons();
+        ctx.fill('evenodd');
+        if (state.addLoop) {
+          ctx.beginPath();
+          traceLoopPath();
+          ctx.fill('nonzero');
+        }
       }
 
       ctx.beginPath();
-      tracePolygonPath();
+      traceAllPolygons();
       ctx.stroke();
 
       if (state.addLoop && (customMode === 1 || !customSpiro.isClosed())) {
@@ -921,24 +958,30 @@ function render2D(targetCanvas = canvas2d, customSpiro = spiro, customPalette = 
     ctx.lineJoin = 'miter';
     ctx.miterLimit = 25;
 
-    ctx.beginPath();
-    tracePolygonPath();
-    if (state.addLoop) traceLoopPath();
-    ctx.fill('nonzero');
+    for (const poly of polys) {
+      ctx.beginPath();
+      traceSinglePolygon(poly);
+      ctx.fill('nonzero');
+    }
+    if (state.addLoop) {
+      ctx.beginPath();
+      traceLoopPath();
+      ctx.fill('nonzero');
+    }
 
     // Outer base rim matching Clipper 3D geometry
     ctx.beginPath();
-    tracePolygonPath();
+    traceAllPolygons();
     ctx.stroke();
     ctx.restore();
   }
 
-  // 2. Fill layer (3-color and 2-color modes)
+  // 2. Fill layer (3-color and 2-color modes using combined even-odd rule)
   if (customMode >= 2 && customSpiro.isClosed()) {
     ctx.save();
     ctx.fillStyle = customPalette.fillColor;
     ctx.beginPath();
-    tracePolygonPath();
+    traceAllPolygons();
     ctx.fill('evenodd');
 
     if (customMode === 2 && state.addLoop) {
@@ -957,7 +1000,7 @@ function render2D(targetCanvas = canvas2d, customSpiro = spiro, customPalette = 
   ctx.miterLimit = 25;
 
   ctx.beginPath();
-  tracePolygonPath();
+  traceAllPolygons();
   ctx.stroke();
 
   if (customMode === 1 && state.addLoop) {
@@ -1279,22 +1322,38 @@ document.getElementById('btnDownload3MF').onclick = async () => {
 
 // Download .SVG
 document.getElementById('btnDownloadSVG').onclick = () => {
-  const poly = spiro.getPolygon();
+  const polys = (typeof spiro.getPolygons === 'function')
+    ? spiro.getPolygons()
+    : [spiro.getPolygon()];
   const bounds = spiro.getBoundingRect();
   const pal = getActivePalette();
   const pad = 12;
   const w = bounds.width + pad * 2;
   const h = bounds.height + pad * 2;
-  const ptsStr = poly.map(p => `${(p.x + pad).toFixed(2)},${(p.y + pad).toFixed(2)}`).join(' ');
+
+  const toPtsStr = (poly) =>
+    poly.map(p => `${(p.x + pad).toFixed(2)},${(p.y + pad).toFixed(2)}`).join(' ');
+
+  const combinedPathD = polys
+    .map(poly =>
+      poly.map((p, i) => `${i === 0 ? 'M' : 'L'}${(p.x + pad).toFixed(2)},${(p.y + pad).toFixed(2)}`).join(' ') +
+      (spiro.isClosed() ? ' Z' : '')
+    )
+    .join(' ');
 
   let layersSvg = '';
   if (state.colorMode === 3 && spiro.isClosed()) {
-    layersSvg += `<polygon points="${ptsStr}" fill="${pal.baseColor}" stroke="none"/>\n`;
+    polys.forEach(poly => {
+      layersSvg += `<polygon points="${toPtsStr(poly)}" fill="${pal.baseColor}" stroke="none"/>\n`;
+    });
   }
   if (state.colorMode >= 2 && spiro.isClosed()) {
-    layersSvg += `<polygon points="${ptsStr}" fill="${pal.fillColor}" fill-rule="evenodd" stroke="none"/>\n`;
+    layersSvg += `<path d="${combinedPathD}" fill="${pal.fillColor}" fill-rule="evenodd" stroke="none"/>\n`;
   }
-  layersSvg += `<polygon points="${ptsStr}" fill="none" stroke="${pal.lineColor}" stroke-width="${state.lineWidthMm}" stroke-linejoin="miter"/>\n`;
+  const lineTag = spiro.isClosed() ? 'polygon' : 'polyline';
+  polys.forEach(poly => {
+    layersSvg += `<${lineTag} points="${toPtsStr(poly)}" fill="none" stroke="${pal.lineColor}" stroke-width="${state.lineWidthMm}" stroke-linejoin="miter"/>\n`;
+  });
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="600" height="600">
     <rect width="100%" height="100%" fill="#f6faf8"/>
@@ -1305,7 +1364,7 @@ document.getElementById('btnDownloadSVG').onclick = () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `Spirolateral_${state.segmentNr}_${state.angle}.svg`;
+  a.download = `Spirolateral_${state.segmentNr}_${state.angle}${state.mirrorSymmetry ? '_sym' : ''}.svg`;
   a.click();
   URL.revokeObjectURL(url);
 };
@@ -1327,6 +1386,7 @@ document.getElementById('btnSubmitSheet').onclick = async () => {
       cornerRounding: state.cornerRounding,
       segmentCurving: state.segmentCurving,
       addLoop: state.addLoop,
+      mirrorSymmetry: state.mirrorSymmetry,
       lineWidthMm: state.lineWidthMm
     },
     timestamp: new Date().toISOString()
@@ -1389,6 +1449,7 @@ function loadProjectItemIntoEditor(item) {
   state.cornerRounding = p.cornerRounding || 0.0;
   state.segmentCurving = p.segmentCurving || 0.0;
   state.addLoop = p.addLoop !== undefined ? p.addLoop : true;
+  state.mirrorSymmetry = Boolean(p.mirrorSymmetry);
   state.lineWidthMm = p.lineWidthMm || 0.80;
   savedLineWidthByMode[targetMode] = state.lineWidthMm;
 
@@ -1403,6 +1464,7 @@ function loadProjectItemIntoEditor(item) {
   spiro.setAngle(state.angle);
   spiro.setReverseTurns(state.reverseTurns);
   spiro.setRoundingAndCurving(state.cornerRounding, state.segmentCurving);
+  spiro.setMirrorSymmetry(state.mirrorSymmetry);
 
   syncInputsToState();
   renderReversalChips();
@@ -1458,7 +1520,7 @@ async function loadProjectsIntoGallery() {
     const meta = document.createElement('div');
     meta.style.fontSize = '0.72rem';
     meta.style.color = '#5c6e68';
-    meta.textContent = `${item.colorMode || 3}b | ${item.params.segmentNr}s | ${item.params.angle}°`;
+    meta.textContent = `${item.colorMode || 3}b | ${item.params.segmentNr}s | ${item.params.angle}°${item.params.mirrorSymmetry ? ' | sym' : ''}`;
 
     card.appendChild(thumbCanvas);
     card.appendChild(title);
@@ -1468,6 +1530,7 @@ async function loadProjectsIntoGallery() {
     const tempSpiro = new Spirolateral(item.params.segmentNr, item.params.angle);
     tempSpiro.setReverseTurns(item.params.reverseTurns || []);
     tempSpiro.setRoundingAndCurving(item.params.cornerRounding || 0, item.params.segmentCurving || 0);
+    tempSpiro.setMirrorSymmetry(Boolean(item.params.mirrorSymmetry));
 
     const list = PALETTES_BY_MODE[item.colorMode || 3] || PALETTES_BY_MODE[3];
     const p = list.find(x => x.id === item.paletteId) || list[0];
@@ -1529,6 +1592,7 @@ document.getElementById('btnBatchExport3MF').onclick = async () => {
       const s = new Spirolateral(item.params.segmentNr, item.params.angle);
       s.setReverseTurns(item.params.reverseTurns || []);
       s.setRoundingAndCurving(item.params.cornerRounding || 0, item.params.segmentCurving || 0);
+      s.setMirrorSymmetry(Boolean(item.params.mirrorSymmetry));
 
       const geometries = buildOrnamentLayers(s, {
         targetSizeMm: 70,

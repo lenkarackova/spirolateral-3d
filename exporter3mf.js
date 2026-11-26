@@ -3,13 +3,15 @@
  */
 const CLIPPER_SCALE = 1000;
 
-function scalePolyToClipper(pts, targetSizeMm) {
+function scalePolysToClipper(polys, targetSizeMm) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const p of pts) {
-    if (p.x < minX) minX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y > maxY) maxY = p.y;
+  for (const pts of polys) {
+    for (const p of pts) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
   }
   const w = Math.max(1e-4, maxX - minX);
   const h = Math.max(1e-4, maxY - minY);
@@ -17,17 +19,19 @@ function scalePolyToClipper(pts, targetSizeMm) {
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
 
-  const path = [];
-  for (const p of pts) {
-    const sx = (p.x - cx) * scale;
-    const sy = -(p.y - cy) * scale;
-    const X = Math.round(sx * CLIPPER_SCALE);
-    const Y = Math.round(sy * CLIPPER_SCALE);
-    if (path.length === 0 || path[path.length - 1].X !== X || path[path.length - 1].Y !== Y) {
-      path.push({ X, Y });
+  return polys.map(pts => {
+    const path = [];
+    for (const p of pts) {
+      const sx = (p.x - cx) * scale;
+      const sy = -(p.y - cy) * scale;
+      const X = Math.round(sx * CLIPPER_SCALE);
+      const Y = Math.round(sy * CLIPPER_SCALE);
+      if (path.length === 0 || path[path.length - 1].X !== X || path[path.length - 1].Y !== Y) {
+        path.push({ X, Y });
+      }
     }
-  }
-  return path;
+    return path;
+  });
 }
 
 function makeCircleClipperPath(cxMm, cyMm, radiusMm, segments = 36) {
@@ -190,22 +194,31 @@ function buildOrnamentLayers(spiro, options) {
     addLoop = true
   } = options;
 
-  const rawPts = spiro.getPolygon();
+  const rawPolys = (typeof spiro.getPolygons === 'function')
+    ? spiro.getPolygons()
+    : [spiro.getPolygon()];
   const isClosed = spiro.isClosed();
-  const clipperPath = scalePolyToClipper(rawPts, targetSizeMm);
+  const clipperPaths = scalePolysToClipper(rawPolys, targetSizeMm);
 
-  const strokePath = clipperPath.slice();
-  if (isClosed && strokePath.length > 2) {
-    const first = strokePath[0];
-    const last = strokePath[strokePath.length - 1];
-    if (first.X === last.X && first.Y === last.Y) {
-      strokePath.pop();
-    }
-  }
+  const strokePaths = clipperPaths
+    .map(path => {
+      const sp = path.slice();
+      if (isClosed && sp.length > 2) {
+        const first = sp[0];
+        const last = sp[sp.length - 1];
+        if (first.X === last.X && first.Y === last.Y) {
+          sp.pop();
+        }
+      }
+      return sp;
+    })
+    .filter(sp => sp.length >= 2);
 
   let topPt = { X: 0, Y: -Infinity };
-  for (const pt of strokePath) {
-    if (pt.Y > topPt.Y) topPt = pt;
+  for (const sp of strokePaths) {
+    for (const pt of sp) {
+      if (pt.Y > topPt.Y) topPt = pt;
+    }
   }
   const topXmm = topPt.X / CLIPPER_SCALE;
   const topYmm = topPt.Y / CLIPPER_SCALE;
@@ -214,10 +227,12 @@ function buildOrnamentLayers(spiro, options) {
   const loopOuterRadius = 2.00;
   const loopInnerRadius = 1.20;
 
-  // 1. Linka
+  // 1. Line layer (offset all curves and unify)
   const coLine = new ClipperLib.ClipperOffset(30.0, 0.25 * CLIPPER_SCALE);
   const endType = isClosed ? ClipperLib.EndType.etClosedLine : ClipperLib.EndType.etOpenSquare;
-  coLine.AddPath(strokePath, ClipperLib.JoinType.jtMiter, endType);
+  for (const sp of strokePaths) {
+    coLine.AddPath(sp, ClipperLib.JoinType.jtMiter, endType);
+  }
 
   const lineRawPaths = new ClipperLib.Paths();
   coLine.Execute(lineRawPaths, (lineWidthMm / 2) * CLIPPER_SCALE);
@@ -247,7 +262,7 @@ function buildOrnamentLayers(spiro, options) {
   cLine.AddPaths(linePathsWithLoop, ClipperLib.PolyType.ptSubject, true);
   cLine.Execute(ClipperLib.ClipType.ctUnion, linePolyTree, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
 
-  // 2. Výplň
+  // 2. Fill layer (combined Even-Odd parity across all curves)
   const fillPolyTree = new ClipperLib.PolyTree();
   let fillPathsWithLoop = null;
 
@@ -255,7 +270,9 @@ function buildOrnamentLayers(spiro, options) {
     const evenOddPaths = new ClipperLib.Paths();
     const cEvenOdd = new ClipperLib.Clipper();
     cEvenOdd.StrictlySimple = true;
-    cEvenOdd.AddPath(strokePath, ClipperLib.PolyType.ptSubject, true);
+    for (const sp of strokePaths) {
+      cEvenOdd.AddPath(sp, ClipperLib.PolyType.ptSubject, true);
+    }
     cEvenOdd.Execute(ClipperLib.ClipType.ctUnion, evenOddPaths, ClipperLib.PolyFillType.pftEvenOdd, ClipperLib.PolyFillType.pftEvenOdd);
 
     const cFillUnion = new ClipperLib.Clipper();
@@ -292,7 +309,7 @@ function buildOrnamentLayers(spiro, options) {
     }
   }
 
-  // 3. Základna (jen pro 3 barvy)
+  // 3. Base layer (3-color mode only; resolve each curve silhouette separately to avoid winding cancellation)
   const baseFinalTree = new ClipperLib.PolyTree();
   if (colorMode === 3) {
     const baseOuterPaths = new ClipperLib.Paths();
@@ -301,12 +318,14 @@ function buildOrnamentLayers(spiro, options) {
     cBase.AddPaths(lineRawPaths, ClipperLib.PolyType.ptSubject, true);
 
     if (isClosed) {
-      const silhouettePaths = new ClipperLib.Paths();
-      const cSil = new ClipperLib.Clipper();
-      cSil.StrictlySimple = true;
-      cSil.AddPath(strokePath, ClipperLib.PolyType.ptSubject, true);
-      cSil.Execute(ClipperLib.ClipType.ctUnion, silhouettePaths, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
-      cBase.AddPaths(silhouettePaths, ClipperLib.PolyType.ptSubject, true);
+      for (const sp of strokePaths) {
+        const silhouettePaths = new ClipperLib.Paths();
+        const cSil = new ClipperLib.Clipper();
+        cSil.StrictlySimple = true;
+        cSil.AddPath(sp, ClipperLib.PolyType.ptSubject, true);
+        cSil.Execute(ClipperLib.ClipType.ctUnion, silhouettePaths, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+        cBase.AddPaths(silhouettePaths, ClipperLib.PolyType.ptSubject, true);
+      }
     }
 
     if (addLoop) {
